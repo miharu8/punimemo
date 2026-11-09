@@ -38,7 +38,7 @@ nav button b{font-size:22px;font-weight:400}nav button.on{color:var(--tx)}nav bu
 <nav id="nav"></nav>
 <div id="sheet"><div id="sh"></div></div>
 <script>
-const VER='1.4';
+const VER='1.5';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DEF=()=>({v:1,ch:null,name:'ぷにちゃん',items:[],ideas:[],notif:{on:false,days:[7,3,1,0]},alarm:[60],sent:{}});
@@ -108,7 +108,7 @@ async function act(a,i,j){
  if(a=='pick'){S.ch=i;await save();firstRun(false);view()}
  if(a=='new')sheet();
  if(a=='ics')await ics(i);
- if(a=='ics1'){const l=document.createElement('a');l.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(PEND.ics);document.body.appendChild(l);l.click();l.remove()}
+ if(a=='ics1'){const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([PEND.ics],{type:'text/calendar'}));l.download='punimemo.ics';document.body.appendChild(l);l.click();l.remove();setTimeout(()=>alert('ファイルが保存されたよ。それを開くと、カレンダーに入れられるよ（iPhoneは「ファイル」アプリの「ダウンロード」、Macは「ダウンロード」フォルダにあるよ）'),400)}
  if(a=='gcal')window.open(PEND.g,'_blank');
  if(a=='mode'){rng=i=='range';mode()}
  if(a=='edit')sheet(S.items.find(x=>x.id==i));
