@@ -38,10 +38,10 @@ nav button b{font-size:22px;font-weight:400}nav button.on{color:var(--tx)}nav bu
 <nav id="nav"></nav>
 <div id="sheet"><div id="sh"></div></div>
 <script>
-const VER='1.2';
+const VER='1.3';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const DEF=()=>({v:1,ch:null,name:'ぷにちゃん',items:[],ideas:[],notif:{on:false,days:[7,3,1,0]},sent:{}});
+const DEF=()=>({v:1,ch:null,name:'ぷにちゃん',items:[],ideas:[],notif:{on:false,days:[7,3,1,0]},alarm:[60],sent:{}});
 let S=DEF(),tab='home';
 /* ---- 保存 (IndexedDB) ---- */
 const db=()=>new Promise((ok,ng)=>{const r=indexedDB.open('punimemo',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)});
@@ -68,24 +68,38 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 const open_=()=>S.items.filter(i=>!i.done).sort((a,b)=>(a.d+(a.tm||'')).localeCompare(b.d+(b.tm||'')));
 /* ---- 画面 ---- */
-function card(i){const n=diff(i.d),cl=isPast(i)?'lem':(inPer(i)||n<=3)?'peach':'';return `<div class="card ${cl}"><div class="row"><div><b>${esc(i.t)}</b><div class="sm">${dtxt(i)}</div>${i.memo?`<div class="sm">${esc(i.memo)}</div>`:''}</div><span class="pill">${lab2(i)}</span></div><div class="row" style="margin-top:8px;justify-content:flex-end"><button class="sm2" data-a="done" data-i="${i.id}">できた</button><button class="sm2" data-a="edit" data-i="${i.id}">変更</button><button class="sm2" data-a="del" data-i="${i.id}">削除</button></div></div>`}
+function card(i){const n=diff(i.d),cl=isPast(i)?'lem':(inPer(i)||n<=3)?'peach':'';return `<div class="card ${cl}"><div class="row"><div><b>${esc(i.t)}</b><div class="sm">${dtxt(i)}</div>${i.memo?`<div class="sm">${esc(i.memo)}</div>`:''}</div><span class="pill">${lab2(i)}</span></div><div class="row" style="margin-top:8px;justify-content:flex-end;flex-wrap:wrap"><button class="sm2" data-a="ics" data-i="${i.id}">ピコーンと知らせてもらう</button><button class="sm2" data-a="done" data-i="${i.id}">できた</button><button class="sm2" data-a="edit" data-i="${i.id}">変更</button><button class="sm2" data-a="del" data-i="${i.id}">削除</button></div></div>`}
 const endOf=i=>i.e||i.d;
 const dtxt=i=>i.e&&i.e!=i.d?`${fmt(i.d)}〜${fmt(i.e)}（${diff(i.e)-diff(i.d)+1}日間）`:fmt(i.d)+(i.tm?' '+esc(i.tm):'');
 const isPast=i=>diff(endOf(i))<0,inPer=i=>!!i.e&&diff(i.d)<=0&&diff(i.e)>=0;
 const lab2=i=>isPast(i)?'日にちを過ぎています':inPer(i)?'期間中':lab(diff(i.d));
+const tc=i=>`<div class="card lem" style="border:1.5px solid #F2D77A;padding:16px"><span class="pill">${i.e&&i.e!=i.d?'期間中':'今日'}${i.tm?' '+esc(i.tm):''}</span><div style="font-size:20px;font-weight:500;margin:6px 0 2px">${esc(i.t)}</div><div class="sm">${dtxt(i)}</div>${i.memo?`<div class="sm">${esc(i.memo)}</div>`:''}<div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="sm2" data-a="done" data-i="${i.id}" style="flex:1">できた</button><button class="main sm2" data-a="ics" data-i="${i.id}" style="flex:2">ピコーンと知らせてもらう</button></div></div>`;
+async function ics(id){const i=S.items.find(x=>x.id==id);if(!i)return;
+ const p=n=>String(n).padStart(2,'0'),T=d=>d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'T'+p(d.getHours())+p(d.getMinutes())+'00',X=s=>String(s).replace(/[\\;,]/g,'\\$&').replace(/\n/g,'\\n');
+ let st,en,al=[];
+ if(i.tm&&!(i.e&&i.e!=i.d)){const a=new Date(i.d+'T'+i.tm);st='DTSTART:'+T(a);en='DTEND:'+T(new Date(a.getTime()+36e5));(S.alarm||[]).forEach(m=>al.push(m?'-PT'+m+'M':'PT0S'));if(!al.length)al.push('-PT1H')}
+ else{const e2=new Date(endOf(i)+'T00:00');e2.setDate(e2.getDate()+1);st='DTSTART;VALUE=DATE:'+i.d.replace(/-/g,'');en='DTEND;VALUE=DATE:'+T(e2).slice(0,8);al.push('PT9H')}
+ const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//punimemo//JP','BEGIN:VEVENT','UID:'+i.id+'@punimemo','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z',st,en,'SUMMARY:'+X(i.t)];
+ if(i.memo)L.push('DESCRIPTION:'+X(i.memo));
+ al.forEach(t=>L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+X(i.t),'TRIGGER:'+t,'END:VALARM'));
+ L.push('END:VEVENT','END:VCALENDAR');
+ const f=new File([L.join('\r\n')],'punimemo.ics',{type:'text/calendar'});
+ if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]})}catch(e){}return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download='punimemo.ics';a.click();
+ alert('ファイルを開いて、スマホのカレンダーに入れてね。時間になったら、ピコーンと教えてくれるよ（マナーモードのときは画面に出るよ）');}
 let msg='';
 function say(near,any){const A=near?['あっ、あの件が近づいてきた！','そろそろ、あれの出番かも','ちょっと確認してみる？']:any?['まだここにいたのね（笑）','自分のペースで大丈夫','急がなくてもいいよ〜']:['今日はどんな日？','おかえり〜！今日も地球は回ってる','いつかやりたいこと、増えた？'];return pick(A)}
 function view(){
- const o=open_(),near=o.filter(i=>diff(i.d)<=7);let h='';
+ const o=open_(),td=o.filter(i=>diff(i.d)==0||inPer(i)),near=o.filter(i=>diff(i.d)<=7&&!td.includes(i));let h='';
  if(tab=='home'){const c=S.ch[0],f=o.some(i=>diff(i.d)<=3)?'wow':S.ch.slice(1);
-  h=`<div class="top"><h1>ぷにメモ</h1><span class="sm">${fmt(today())}</span></div><div class="hero">${ch(c,f)}<div><span class="say">${esc(msg)}</span></div><div class="sm" style="margin-top:6px">${esc(S.name)}</div></div><h2>近づいてきた予定</h2>${near.length?near.slice(0,5).map(card).join(''):'<div class="empty">いまのところ、近い予定はないよ</div>'}<div class="card mint row" data-a="tab" data-i="ideas" style="cursor:pointer"><div><b>いつかやりたいこと</b><div class="sm">ポイっと入れておこう（${S.ideas.length}）</div></div><span style="font-size:24px">＋</span></div>`}
+  h=`<div class="top"><h1>ぷにメモ</h1><span class="sm">${fmt(today())}</span></div><div class="hero">${ch(c,f)}<div><span class="say">${esc(msg)}</span></div><div class="sm" style="margin-top:6px">${esc(S.name)}</div></div>${td.length?'<h2>今日の予定</h2>'+td.map(tc).join(''):''}<h2>近づいてきた予定</h2>${near.length?near.slice(0,5).map(card).join(''):'<div class="empty">いまのところ、近い予定はないよ</div>'}<div class="card mint row" data-a="tab" data-i="ideas" style="cursor:pointer"><div><b>いつかやりたいこと</b><div class="sm">ポイっと入れておこう（${S.ideas.length}）</div></div><span style="font-size:24px">＋</span></div>`}
  if(tab=='dates')h=`<div class="top"><h1>日にちが決まっていること</h1></div><p><button class="main" data-a="new" style="width:100%">＋ 予定を入れる</button></p>${o.length?o.map(card).join(''):'<div class="empty">まだ予定はないよ</div>'}`;
  if(tab=='ideas')h=`<h1>いつかやりたいこと</h1><p class="sm">夢でも思いつきでも、なんでもポイ。日にちはあとで決めればOK</p><p><input id="idea" placeholder="いつかやりたいこと、ここに書いてね" maxlength="200"></p><p><input id="idea2" placeholder="メモ（なくてもOK）" maxlength="300"></p><p><button class="main" data-a="addidea" style="width:100%">ポイっと入れる</button></p>${S.ideas.length?S.ideas.map((x,n)=>`<div class="card mint"><div class="sm">No.${n+1}</div><b>${esc(x.t)}</b>${x.memo?`<div class="sm">メモ：${esc(x.memo)}</div>`:''}<div class="row" style="margin-top:8px;justify-content:flex-end;flex-wrap:wrap"><button class="sm2" data-a="todate" data-i="${x.id}">日にち決まった！</button><button class="sm2" data-a="grant" data-i="${x.id}">叶った</button><button class="sm2" data-a="editidea" data-i="${x.id}">編集</button><button class="sm2" data-a="delidea" data-i="${x.id}">削除</button></div></div>`).reverse().join(''):'<div class="empty">ここは自由な場所。なんでも入れてね</div>'}`;
  if(tab=='done'){const d=S.items.filter(i=>i.done).sort((a,b)=>b.done.localeCompare(a.done));h=`<h1>完了したこと</h1><p class="sm">こんなことをしてきたんだね</p>${d.length?d.map(i=>`<div class="card wh"><div class="row"><div><b>${esc(i.t)}</b><div class="sm">${fmt(i.done)} に完了</div></div><button class="sm2" data-a="undo" data-i="${i.id}">元に戻す</button></div></div>`).join(''):'<div class="empty">まだ何もないよ</div>'}`}
- if(tab=='set')h=`<h1>設定</h1><h2>キャラクター</h2>${chooser(S.ch)}<h2>名前</h2><input id="nm" value="${esc(S.name)}" maxlength="12"><h2>通知</h2><div class="card wh"><label><input type="checkbox" id="nt" style="width:auto" ${S.notif.on?'checked':''}> アプリを開いたときにお知らせする</label><div class="sm" style="margin:6px 0">お知らせするタイミング</div>${[7,3,1,0].map(d=>`<label style="margin-right:10px"><input type="checkbox" class="nd" value="${d}" style="width:auto" ${S.notif.days.includes(d)?'checked':''}> ${d?d+'日前':'当日'}</label>`).join('')}<div class="sm" style="margin-top:8px">※アプリを閉じている間の通知は、無料の範囲では届かないことがあります。ホーム画面で近い予定を確認できます。</div></div><h2>データ</h2><p><button data-a="bk" style="width:100%">バックアップを保存</button></p><p><button data-a="rs" style="width:100%">バックアップから復元</button><input type="file" id="fl" accept=".json" hidden></p><p><button data-a="rst" style="width:100%">すべて初期化</button></p><h2>アプリ情報</h2><p class="sm">ぷにメモ v${VER} ／ データはこの端末の中だけに保存されます。</p>`;
+ if(tab=='set')h=`<h1>設定</h1><h2>キャラクター</h2>${chooser(S.ch)}<h2>名前</h2><input id="nm" value="${esc(S.name)}" maxlength="12"><h2>通知</h2><div class="card wh"><label><input type="checkbox" id="nt" style="width:auto" ${S.notif.on?'checked':''}> アプリを開いたときにお知らせする</label><div class="sm" style="margin:6px 0">お知らせするタイミング</div>${[7,3,1,0].map(d=>`<label style="margin-right:10px"><input type="checkbox" class="nd" value="${d}" style="width:auto" ${S.notif.days.includes(d)?'checked':''}> ${d?d+'日前':'当日'}</label>`).join('')}<div class="sm" style="margin:12px 0 4px">時間を入れた予定は、これも選べるよ（「ピコーンと知らせてもらう」を押したときに使うよ）</div>${[[120,'2時間前'],[60,'1時間前'],[30,'30分前'],[0,'ちょうど']].map(a=>`<label style="margin-right:10px"><input type="checkbox" class="na" value="${a[0]}" style="width:auto" ${(S.alarm||[]).includes(a[0])?'checked':''}> ${a[1]}</label>`).join('')}<div class="sm" style="margin-top:6px">時間を入れていない予定は、当日の朝9時にお知らせするよ。マナーモードのときは、音ではなく画面に出るよ。</div><div class="sm" style="margin-top:8px">※アプリを閉じている間の通知は、無料の範囲では届かないことがあります。ホーム画面で近い予定を確認できます。</div></div><h2>データ</h2><p><button data-a="bk" style="width:100%">バックアップを保存</button></p><p><button data-a="rs" style="width:100%">バックアップから復元</button><input type="file" id="fl" accept=".json" hidden></p><p><button data-a="rst" style="width:100%">すべて初期化</button></p><h2>アプリ情報</h2><p class="sm">ぷにメモ v${VER} ／ データはこの端末の中だけに保存されます。</p>`;
  $('#app').innerHTML=h+'<div class="foot">Presented by 波動調整師 千鈴龍穂</div>';
  $('#nav').innerHTML=[['home','🏠','ホーム'],['dates','📅','日にち'],['ideas','💡','いつか'],['done','✅','完了'],['set','⚙️','設定']].map(t=>`<button data-a="tab" data-i="${t[0]}" class="${tab==t[0]?'on':''}"><b>${t[1]}</b>${t[2]}</button>`).join('');
- const nt=$('#nt');if(nt){nt.onchange=async()=>{if(nt.checked&&window.Notification&&Notification.permission!='granted'){const p=await Notification.requestPermission();if(p!='granted'){nt.checked=false;alert('通知は許可されなかったよ。アプリは今まで通り使えるよ。')}}S.notif.on=nt.checked;save()};document.querySelectorAll('.nd').forEach(c=>c.onchange=()=>{S.notif.days=[...document.querySelectorAll('.nd:checked')].map(x=>+x.value);save()});$('#nm').onchange=e=>{S.name=e.target.value.trim()||'ぷにちゃん';save()};$('#fl').onchange=restore}
+ const nt=$('#nt');if(nt){nt.onchange=async()=>{if(nt.checked&&window.Notification&&Notification.permission!='granted'){const p=await Notification.requestPermission();if(p!='granted'){nt.checked=false;alert('通知は許可されなかったよ。アプリは今まで通り使えるよ。')}}S.notif.on=nt.checked;save()};document.querySelectorAll('.nd').forEach(c=>c.onchange=()=>{S.notif.days=[...document.querySelectorAll('.nd:checked')].map(x=>+x.value);save()});document.querySelectorAll('.na').forEach(c=>c.onchange=()=>{S.alarm=[...document.querySelectorAll('.na:checked')].map(x=>+x.value);save()});$('#nm').onchange=e=>{S.name=e.target.value.trim()||'ぷにちゃん';save()};$('#fl').onchange=restore}
 }
 let rng=false;
 function sheet(it,idea){const i=it||{t:idea?idea.t:'',d:today(),tm:'',memo:idea?idea.memo||'':'',e:''};rng=!!(i.e&&i.e!=i.d);$('#sh').innerHTML=`<h1>${it?'予定を変更':'予定を入れる'}</h1><label>やること</label><input id="f1" value="${esc(i.t)}" maxlength="100"><div class="row" style="margin:12px 0 0"><button id="m1" data-a="mode" data-i="one" style="flex:1">1日だけ</button><button id="m2" data-a="mode" data-i="range" style="flex:1">期間（旅行・出張）</button></div><div class="row" style="align-items:flex-end"><div style="flex:1;min-width:0"><label id="l2">日にち</label><input id="f2" type="date" value="${i.d}"></div><div id="ew" style="flex:1;min-width:0"><label>おわり</label><input id="f5" type="date" value="${i.e||i.d}"></div></div><label>時刻（なくてもOK）</label><input id="f3" type="time" value="${i.tm||''}"><label>メモ</label><textarea id="f4" rows="3">${esc(i.memo||'')}</textarea><div class="row" style="margin-top:16px"><button data-a="close">やめる</button><button class="main" data-a="saveitem" data-i="${it?it.id:''}" data-j="${idea?idea.id:''}">保存する</button></div>`;mode();$('#sheet').classList.add('on')}
@@ -94,6 +108,7 @@ async function act(a,i,j){
  if(a=='tab'){tab=i;msg=say(open_().some(x=>diff(x.d)<=7),open_().length>0);view();scrollTo(0,0)}
  if(a=='pick'){S.ch=i;await save();firstRun(false);view()}
  if(a=='new')sheet();
+ if(a=='ics')await ics(i);
  if(a=='mode'){rng=i=='range';mode()}
  if(a=='edit')sheet(S.items.find(x=>x.id==i));
  if(a=='close')$('#sheet').classList.remove('on');
