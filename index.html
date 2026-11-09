@@ -38,7 +38,7 @@ nav button b{font-size:22px;font-weight:400}nav button.on{color:var(--tx)}nav bu
 <nav id="nav"></nav>
 <div id="sheet"><div id="sh"></div></div>
 <script>
-const VER='1.3';
+const VER='1.4';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DEF=()=>({v:1,ch:null,name:'ぷにちゃん',items:[],ideas:[],notif:{on:false,days:[7,3,1,0]},alarm:[60],sent:{}});
@@ -76,17 +76,16 @@ const lab2=i=>isPast(i)?'日にちを過ぎています':inPer(i)?'期間中':la
 const tc=i=>`<div class="card lem" style="border:1.5px solid #F2D77A;padding:16px"><span class="pill">${i.e&&i.e!=i.d?'期間中':'今日'}${i.tm?' '+esc(i.tm):''}</span><div style="font-size:20px;font-weight:500;margin:6px 0 2px">${esc(i.t)}</div><div class="sm">${dtxt(i)}</div>${i.memo?`<div class="sm">${esc(i.memo)}</div>`:''}<div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="sm2" data-a="done" data-i="${i.id}" style="flex:1">できた</button><button class="main sm2" data-a="ics" data-i="${i.id}" style="flex:2">ピコーンと知らせてもらう</button></div></div>`;
 async function ics(id){const i=S.items.find(x=>x.id==id);if(!i)return;
  const p=n=>String(n).padStart(2,'0'),T=d=>d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'T'+p(d.getHours())+p(d.getMinutes())+'00',X=s=>String(s).replace(/[\\;,]/g,'\\$&').replace(/\n/g,'\\n');
- let st,en,al=[];
- if(i.tm&&!(i.e&&i.e!=i.d)){const a=new Date(i.d+'T'+i.tm);st='DTSTART:'+T(a);en='DTEND:'+T(new Date(a.getTime()+36e5));(S.alarm||[]).forEach(m=>al.push(m?'-PT'+m+'M':'PT0S'));if(!al.length)al.push('-PT1H')}
- else{const e2=new Date(endOf(i)+'T00:00');e2.setDate(e2.getDate()+1);st='DTSTART;VALUE=DATE:'+i.d.replace(/-/g,'');en='DTEND;VALUE=DATE:'+T(e2).slice(0,8);al.push('PT9H')}
+ let st,en,gs,ge,al=[];
+ if(i.tm&&!(i.e&&i.e!=i.d)){const a=new Date(i.d+'T'+i.tm);st='DTSTART:'+T(a);en='DTEND:'+T(new Date(a.getTime()+36e5));gs=T(a);ge=T(new Date(a.getTime()+36e5));(S.alarm||[]).forEach(m=>al.push(m?'-PT'+m+'M':'PT0S'));if(!al.length)al.push('-PT1H')}
+ else{const e2=new Date(endOf(i)+'T00:00');e2.setDate(e2.getDate()+1);st='DTSTART;VALUE=DATE:'+i.d.replace(/-/g,'');en='DTEND;VALUE=DATE:'+T(e2).slice(0,8);gs=i.d.replace(/-/g,'');ge=T(e2).slice(0,8);al.push('PT9H')}
  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//punimemo//JP','BEGIN:VEVENT','UID:'+i.id+'@punimemo','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z',st,en,'SUMMARY:'+X(i.t)];
  if(i.memo)L.push('DESCRIPTION:'+X(i.memo));
  al.forEach(t=>L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+X(i.t),'TRIGGER:'+t,'END:VALARM'));
  L.push('END:VEVENT','END:VCALENDAR');
- const f=new File([L.join('\r\n')],'punimemo.ics',{type:'text/calendar'});
- if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]})}catch(e){}return}
- const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download='punimemo.ics';a.click();
- alert('ファイルを開いて、スマホのカレンダーに入れてね。時間になったら、ピコーンと教えてくれるよ（マナーモードのときは画面に出るよ）');}
+ PEND={ics:L.join('\r\n'),g:'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(i.t)+'&dates='+gs+'/'+ge+'&details='+encodeURIComponent(i.memo||'')};
+ $('#sh').innerHTML='<h1>どのカレンダーに入れる？</h1><p class="sm">時間になったら、スマホがピコーンと教えてくれるよ（マナーモードのときは画面に出るよ）</p><p><button class="main" data-a="ics1" style="width:100%">iPhone・Macのカレンダー</button></p><p><button data-a="gcal" style="width:100%">Googleカレンダー（Androidなど）</button></p><p class="sm">Googleカレンダーは、お知らせの時間がカレンダー側の設定になるよ。</p><p><button data-a="close" style="width:100%">やめる</button></p>';$('#sheet').classList.add('on')}
+let PEND={};
 let msg='';
 function say(near,any){const A=near?['あっ、あの件が近づいてきた！','そろそろ、あれの出番かも','ちょっと確認してみる？']:any?['まだここにいたのね（笑）','自分のペースで大丈夫','急がなくてもいいよ〜']:['今日はどんな日？','おかえり〜！今日も地球は回ってる','いつかやりたいこと、増えた？'];return pick(A)}
 function view(){
@@ -109,6 +108,8 @@ async function act(a,i,j){
  if(a=='pick'){S.ch=i;await save();firstRun(false);view()}
  if(a=='new')sheet();
  if(a=='ics')await ics(i);
+ if(a=='ics1'){const l=document.createElement('a');l.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(PEND.ics);document.body.appendChild(l);l.click();l.remove()}
+ if(a=='gcal')window.open(PEND.g,'_blank');
  if(a=='mode'){rng=i=='range';mode()}
  if(a=='edit')sheet(S.items.find(x=>x.id==i));
  if(a=='close')$('#sheet').classList.remove('on');
